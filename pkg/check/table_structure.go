@@ -81,11 +81,20 @@ func (c *TablesChecker) Check(ctx context.Context) *Result {
 		Extra: fmt.Sprintf("address of db instance - %s:%d", c.dbinfo.Host, c.dbinfo.Port),
 	}
 
+	type result struct {
+		statement string
+		err error
+		schema string
+		table string
+	}
+
 	var (
 		err        error
 		options    = make(map[string][]*incompatibilityOption)
 		statements = make(map[string]string)
+		resultCh      = make(chan result)
 	)
+
 	for schema, tables := range c.tables {
 		if len(tables) == 0 {
 			tables, err = dbutil.GetTables(ctx, c.db, schema)
@@ -96,22 +105,37 @@ func (c *TablesChecker) Check(ctx context.Context) *Result {
 		}
 
 		for _, table := range tables {
-			tableName := dbutil.TableName(schema, table)
-			statement, err := dbutil.GetCreateTableSQL(ctx, c.db, schema, table)
-			if err != nil {
-				// continue if table was deleted when checking
-				if isMySQLError(err, mysql.ErrNoSuchTable) {
-					continue
-				}
-				markCheckError(r, err)
-				return r
-			}
+			schema := schema
+			table := table
+			go func() {
+				statement, err := dbutil.GetCreateTableSQL(ctx, c.db, schema, table)
+				resultCh <- result{statement, err, schema, table}
+			}()
+		}
+	}
 
-			opts := c.checkCreateSQL(ctx, statement)
-			if len(opts) > 0 {
-				options[tableName] = opts
-				statements[tableName] = statement
+	for result := range resultCh {
+		// receive statement err schema table
+		tableName := dbutil.TableName(schema, table)
+
+
+
+
+
+		// statement, err := dbutil.GetCreateTableSQL(ctx, c.db, schema, table)
+		if err != nil {
+			// continue if table was deleted when checking
+			if isMySQLError(err, mysql.ErrNoSuchTable) {
+				continue
 			}
+			markCheckError(r, err)
+			return r
+		}
+
+		opts := c.checkCreateSQL(ctx, statement)
+		if len(opts) > 0 {
+			options[tableName] = opts
+			statements[tableName] = statement
 		}
 	}
 
