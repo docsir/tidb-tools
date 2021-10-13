@@ -5,11 +5,28 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	tc "github.com/pingcap/check"
 	"github.com/pingcap/tidb-tools/pkg/dbutil"
 )
+
+func (t *testCheckSuite) TestTimeCost(c *tc.C) {
+	now := time.Now()
+
+	dbDSN := fmt.Sprintf("%s:%s@tcp(%s:%d)/?charset=utf8mb4", "root", "root", "localhost", 3306)
+	db, err := sql.Open("mysql", dbDSN)
+	c.Assert(err, tc.IsNil)
+
+	tables := map[string][]string{}
+	tables["test1"] = []string{"table1", "table2", "table3"}
+
+	checker := NewTablesChecker(db, &dbutil.DBConfig{}, tables)
+	checker.Check(context.Background())
+
+	fmt.Println("Time cost", time.Since(now))
+}
 
 func (t *testCheckSuite) TestShardingTablesChecker(c *tc.C) {
 	db, mock, err := sqlmock.New()
